@@ -169,6 +169,7 @@ fn generate_method_handler<S: Service, T: Method>(
       let reply = #response {
         message: format!("Hello {}!", message.name),
         field_name: String::from(""),
+        status: my_proto::result::Status::Success as i32,
         // ..
       };
       Ok(Response::new(reply))
