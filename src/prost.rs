@@ -1,3 +1,4 @@
+use crate::generate_code;
 use proc_macro2::TokenStream;
 use prost_build::{Config, Method, Service};
 use quote::ToTokens;
@@ -41,7 +42,7 @@ pub fn compile_protos(proto: impl AsRef<Path>) -> io::Result<()> {
 
 const PROST_CODEC_PATH: &'static str = "tonic::codec::ProstCodec";
 
-impl toni::Service for Service {
+impl crate::Service for Service {
   const CODEC_PATH: &'static str = PROST_CODEC_PATH;
 
   type Method = Method;
@@ -144,6 +145,8 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
       let client = client::generate(&service, &self.builder.proto_path);
       self.clients.extend(client);
     }
+
+    generate_code::generate(&service, &self.builder.proto_path);
   }
 
   fn finalize(&mut self, buf: &mut String) {
