@@ -1,3 +1,6 @@
+/// copied from "tonic-build"
+/// https://github.com/danburkert/prost/blob/master/prost-build/src/lib.rs
+///
 use crate::generate_code;
 use proc_macro2::TokenStream;
 use prost_build::{Config, Method, Service};

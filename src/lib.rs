@@ -1,4 +1,6 @@
 #![allow(unused_imports)]
+/// mostly copied from "tonic-build"
+///
 use proc_macro2::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream};
 use quote::TokenStreamExt;
 
