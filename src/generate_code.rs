@@ -38,7 +38,7 @@ fn generate_service<T: Service>(service: &T, proto_path: &str) -> TokenStream {
     // use tonic::{Request, Response, Status};
 
     use #proto_mod_name::#service_server_name::Auth;
-    use #proto_mod_name::{AuthResponse, RegisterPayload};
+    use #proto_mod_name::*;
 
     use super::action;
 
@@ -161,7 +161,7 @@ fn generate_method_handler<S: Service, T: Method>(
 
     pub async fn handler(
       request: Request<#request>,
-    ) -> Result<Response<#response>, Status> {
+    ) -> ::std::result::Result<Response<#response>, Status> {
       println!("Request from {:?}", request.remote_addr());
       println!("Metadata => {:?}", request.metadata());
 
