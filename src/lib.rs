@@ -19,6 +19,7 @@ use std::io::{self, Write};
 use std::process::{exit, Command};
 
 mod generate_code;
+mod util;
 
 // pub trait Method: tonic_build::Method {}
 pub trait Service {

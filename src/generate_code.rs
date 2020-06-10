@@ -1,5 +1,5 @@
 use super::{Method, Service};
-use crate::{generate_doc_comments, naive_snake_case};
+use crate::{generate_doc_comments, naive_snake_case, util};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
@@ -21,35 +21,31 @@ pub fn generate<T: Service>(service: &T, proto_path: &str) {
 fn generate_service_file<T: Service>(service: &T, proto_path: &str) {
   let stream = generate_service(service, proto_path);
 
-  let code = format!("{}", stream);
-  let filename = format!(
-    "{}/src/service.rs",
-    std::env::current_dir().unwrap().to_str().unwrap()
-  );
-  write_code_to_file(&code, &filename).expect("failed to write result to file");
-}
-
-fn write_code_to_file(
-  //
-  code: &str,
-  filename: &str,
-) -> std::io::Result<()> {
-  use std::fs::File;
-  use std::io::prelude::*;
-
-  let mut file = File::create(filename)?;
-  file.write_all(code.as_bytes())?; // https://doc.rust-lang.org/stable/rust-by-example/std_misc/file/create.html
-
-  Ok(())
+  util::write_stream_to_file_with_header(stream, "src/service.rs", None)
+    .expect("failed to write result to file");
 }
 
 fn generate_service<T: Service>(service: &T, proto_path: &str) -> TokenStream {
+  let service_name_str = naive_snake_case(service.name());
   let service_name = quote::format_ident!("{}", service.name());
+  let service_server_name = quote::format_ident!("{}_server", naive_snake_case(service.name()));
+  let proto_mod_name = quote::format_ident!("{}_proto", naive_snake_case(service.name()));
   let service_ident = quote::format_ident!("{}Service", service.name());
   let service_doc = generate_doc_comments(service.comment());
   let service_methods = generate_methods(service, proto_path);
 
   let stream = quote! {
+    // use tonic::{Request, Response, Status};
+
+    use #proto_mod_name::#service_server_name::Auth;
+    use #proto_mod_name::{AuthResponse, RegisterPayload};
+
+    use super::action;
+
+    pub mod #proto_mod_name {
+      tonic::include_proto!(#service_name_str);
+    }
+
     // Generated client implementations.
     //
     #service_doc
@@ -65,46 +61,13 @@ fn generate_service<T: Service>(service: &T, proto_path: &str) -> TokenStream {
   stream
 }
 
-fn generate_each_method_for_service<T: Method>(
-  method: &T,
-  proto_path: &str,
-  path: String,
-) -> TokenStream {
-  let codec_name = syn::parse_str::<syn::Path>(T::CODEC_PATH).unwrap();
-  let ident = format_ident!("{}", method.name());
-
-  let (request, response) = method.request_response_name(proto_path);
-
-  quote! {
-    async fn #ident(
-      &mut self,
-      request: impl tonic::IntoRequest<#request>,
-    ) -> Result<tonic::Response<#response>, tonic::Status> {
-      action::#ident::handler(request).await
-    }
-  }
-}
-
 fn generate_methods<T: Service>(service: &T, proto_path: &str) -> TokenStream {
   let mut stream = TokenStream::new();
 
   for method in service.methods() {
-    let path = format!(
-      "/{}.{}/{}",
-      service.package(),
-      service.identifier(),
-      method.identifier()
-    );
-
     stream.extend(generate_doc_comments(method.comment()));
 
-    let method = generate_each_method_for_service(method, proto_path, path);
-    // let method = match (method.client_streaming(), method.server_streaming()) {
-    //   (false, false) => generate_unary(method, proto_path, path),
-    //   (false, true) => generate_server_streaming(method, proto_path, path),
-    //   (true, false) => generate_client_streaming(method, proto_path, path),
-    //   (true, true) => generate_streaming(method, proto_path, path),
-    // };
+    let method = generate_each_method_for_service(method, proto_path);
 
     stream.extend(method);
   }
@@ -112,44 +75,103 @@ fn generate_methods<T: Service>(service: &T, proto_path: &str) -> TokenStream {
   stream
 }
 
+fn generate_each_method_for_service<T: Method>(method: &T, proto_path: &str) -> TokenStream {
+  // let codec_name = syn::parse_str::<syn::Path>(T::CODEC_PATH).unwrap();
+  let ident = format_ident!("{}", method.name());
+
+  let (request, response) = get_req_res_type(method, proto_path);
+
+  quote! {
+    async fn #ident(
+      &self,
+      request: tonic::Request<#request>,
+    ) -> ::std::result::Result<tonic::Response<#response>, tonic::Status> {
+      action::#ident::handler(request).await
+    }
+  }
+}
+
+fn get_req_res_type<T: Method>(
+  method: &T,
+  proto_path: &str,
+) -> (quote::__private::Ident, quote::__private::Ident) {
+  let (request, response) = method.request_response_name(proto_path);
+  let v = format!("{}", request);
+  // assert_eq!("RegisterPayload", v);
+  let v: Vec<&str> = v.split(" :: ").collect();
+  let request_type = format_ident!("{}", v[1]);
+
+  let v = format!("{}", response);
+  let v: Vec<&str> = v.split(" :: ").collect();
+  let response_type = format_ident!("{}", v[1]);
+
+  (request_type, response_type)
+}
+
 // ###########################################
 // ############  for each method  ############
 // ###########################################
 fn generate_file_for_each_method<T: Service>(service: &T, proto_path: &str) {
-  let mut stream = TokenStream::new();
+  let mut stream_for_mod = TokenStream::new();
+
+  let header = "// This file is generated by \"proto-gen-code\"
+  // You can refresh boilerplate by removing this file\n\n";
 
   for method in service.methods() {
-    let path = format!(
-      "/{}.{}/{}",
-      service.package(),
-      service.identifier(),
-      method.identifier()
-    );
+    let method_name = format_ident!("{}", method.name());
+    stream_for_mod.extend(quote! {
+      pub mod #method_name;
+    });
+
+    let mut stream = TokenStream::new();
 
     stream.extend(generate_doc_comments(method.comment()));
 
-    let method = generate_method_handler(method, proto_path, path);
+    let method_stream = generate_method_handler(service, method, proto_path);
 
-    stream.extend(method);
+    stream.extend(method_stream);
+
+    util::write_stream_to_file_with_header_if_not_exist(
+      stream,
+      &format!("src/action/{}.rs", method.name()),
+      Some(&header),
+    )
+    .expect("failed to write result to file");
   }
+
+  util::write_stream_to_file_with_header(stream_for_mod, "src/action.rs", None)
+    .expect("failed to write result to file");
 }
 
-fn generate_method_handler<T: Method>(method: &T, proto_path: &str, path: String) -> TokenStream {
-  let codec_name = syn::parse_str::<syn::Path>(T::CODEC_PATH).unwrap();
-  let ident = format_ident!("{}", method.name());
-  let (request, response) = method.request_response_name(proto_path);
+fn generate_method_handler<S: Service, T: Method>(
+  service: &S,
+  method: &T,
+  proto_path: &str,
+) -> TokenStream {
+  // let service_name = quote::format_ident!("{}", service.name());
+  let proto_mod_name = quote::format_ident!("{}_proto", naive_snake_case(service.name()));
+
+  // let codec_name = syn::parse_str::<syn::Path>(T::CODEC_PATH).unwrap();
+  // let ident = format_ident!("{}", method.name());
+  let (request, response) = get_req_res_type(method, proto_path);
 
   quote! {
-    async fn #ident(
-      &mut self,
-      request: impl tonic::IntoRequest<#request>,
-    ) -> Result<tonic::Response<#response>, tonic::Status> {
-      self.inner.ready().await.map_err(|e| {
-        tonic::Status::new(tonic::Code::Unknown, format!("Service was not ready: {}", e.into()))
-      })?;
-      let codec = #codec_name::default();
-      let path = http::uri::PathAndQuery::from_static(#path);
-      self.inner.unary(request.into_request(), path, codec).await
+    use tonic::{Request, Response, Status};
+    use crate::#proto_mod_name::{#request, #response};
+
+    pub async fn handler(
+      request: Request<#request>,
+    ) -> Result<Response<#response>, Status> {
+      println!("Request from {:?}", request.remote_addr());
+      println!("Metadata => {:?}", request.metadata());
+
+      let message = request.into_inner();
+      let reply = #response {
+        message: format!("Hello {}!", message.name),
+        field_name: String::from(""),
+        // ..
+      };
+      Ok(Response::new(reply))
     }
   }
 }
