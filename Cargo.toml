@@ -9,7 +9,7 @@ publish = false
 
 [dependencies]
 prost-build = { version = "0.6", optional = true }
-tonic-build = { git = "https://github.com/hyperium/tonic", rev = "02499fdfd35144855846250abe6661f7b80c1f90", features = ["prost"] }
+tonic-build = { git = "https://github.com/hyperium/tonic", rev = "8212afdf8561e7d01adb1b09f401bd633c044a8d", features = ["prost"] }
 syn = "1.0"
 quote = "1.0"
 proc-macro2 = "1.0"
