@@ -3,7 +3,7 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
-const GENERATED_CODE_HEADER: &'static str = "// This file is generated using \"proto-code-gen\".
+const GENERATED_CODE_HEADER: &'static str = "// This file is generated using \"tonic-build-with-code-gen\".
 // DO NOT EDIT BY HAND!!
 ";
 

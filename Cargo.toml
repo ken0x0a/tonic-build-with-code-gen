@@ -1,5 +1,5 @@
 [package]
-name = "proto-code-gen"
+name = "tonic-build-with-code-gen"
 version = "0.1.0"
 authors = ["Ken <ken0x0a+gh@gmail.com>"]
 edition = "2018"
